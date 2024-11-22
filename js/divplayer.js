@@ -95,6 +95,7 @@ var DragDiv = (function () {
                 let dragitem = val.children[0];
                 val.titlediv = dragitem;
                 let dragrs = resize ? val.children[2] : null;
+                let rssize = resize ? dragrs.getBoundingClientRect() : null;
                 let removebt = remove ? (resize ? val.children[3] : val.children[2]) : null;
                 if (removebt) {
                     removebt.onclick = (e) => {
@@ -115,6 +116,7 @@ var DragDiv = (function () {
                     MaxRect = [r.left, r.top, r.left + r.width, r.top + r.height]
                     console.log(MaxRect);
                 }
+                
 
                 let userdown = e => {
                     //dragitem.onpointerdown=e=>{//只能拖动标题
@@ -178,7 +180,15 @@ var DragDiv = (function () {
                         if (mdiv.parentNode.lastChild != mdiv)
                             mdiv.parentNode.appendChild(mdiv);
                     }
-                    if (dragfull) userdown(e)
+                    if (dragfull) {
+                        if(dragrs){
+                            let r=dragrs.getBoundingClientRect();;
+                            let x=e.pageX;
+                            let y=e.pageY;
+                            if (x >= r.left && x <= r.left + r.width && y >= r.top && y <= r.top + r.height)return;
+                        }
+                        userdown(e)
+                    }
                 };
                 dragitem.onpointerdown = (e) => { if (!dragfull) userdown(e) };
 
@@ -429,17 +439,18 @@ var createAssPlayer = (id) => {
 
 ass=DragDiv.create((()=>{
     const div = document.createElement('div');
-    div.style.cssText=`position: absolute;width: auto;height: auto;`;
+    div.style.cssText=`position: absolute;width: 100%;height: 100%;`;
     const body = document.body;
     while (body.firstChild) {
         div.appendChild(body.firstChild);
     }
     body.appendChild(div);
     return div;
-})(),'字幕',800,600,true,true);
+})(),'字幕',800,600,true,true,true);
 handle=createAssPlayer(ass.panel);
 ass.titlediv.innerHTML=`<input oninput="handle.time=(this.value|0)" type="text" style='width: 50px;position: absolute;left:10px;'>`
 ass.ondivresize=(r)=>{handle.canvas.width=r.w;handle.canvas.height=r.h;}
+ass.style.top='100px';
 let imgfile=async function(file) {
     if (!file) return;
     let extension = file.name.split('.').pop().toLowerCase();
