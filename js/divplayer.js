@@ -95,7 +95,6 @@ var DragDiv = (function () {
                 let dragitem = val.children[0];
                 val.titlediv = dragitem;
                 let dragrs = resize ? val.children[2] : null;
-                let rssize = resize ? dragrs.getBoundingClientRect() : null;
                 let removebt = remove ? (resize ? val.children[3] : val.children[2]) : null;
                 if (removebt) {
                     removebt.onclick = (e) => {
@@ -301,7 +300,6 @@ var DragDiv = (function () {
                     let mdiv = val;
                     if (mdiv.parentNode.lastChild != mdiv)
                         mdiv.parentNode.appendChild(mdiv);
-
                 };
                 val.addselect = (div) => {
                     DragList.push(div);
@@ -334,6 +332,7 @@ class AssPlayer {
         this.time = 0;
         this.isPlay = false;
         this.fontsize = 52;
+        this.fontname = 'Arial'
         this.font = '52px Arial'
         this.timer = setInterval(() => {
             if (this.isPlay) {
@@ -390,7 +389,7 @@ class AssPlayer {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         const scalx = this.canvas.width / this.mw;
         const scaly = this.canvas.height / this.mh;
-        this.font = `${(this.fontsize*scaly)|0}px Arial`
+        this.font = `${(this.fontsize*scaly)|0}px ${this.fontname}`
         for (let i = 0; i < this.textlist.length; i++) {
             let e = this.textlist[i];
             if (!e.textwidth) {
@@ -413,8 +412,9 @@ class AssPlayer {
                 else {
                     x = (e.args[0] | 0) * scalx - e.textwidth / 2;
                 }
-
+                this.ctx.strokeStyle = '#000';
                 this.ctx.fillText(e.text, x, y * scaly + e.textheight / 2);
+                this.ctx.strokeText(e.text, x, y * scaly + e.textheight / 2);
             }
         }
     }
@@ -448,7 +448,7 @@ ass=DragDiv.create((()=>{
     return div;
 })(),'字幕',800,600,true,true,true);
 handle=createAssPlayer(ass.panel);
-ass.titlediv.innerHTML=`<input oninput="handle.time=(this.value|0)" type="text" style='width: 50px;position: absolute;left:10px;'>`
+ass.titlediv.innerHTML=`<input oninput="handle.time=((t)=>t.split(':').length>1 && ((t.split(':')[0]|0)*60+(t.split(':')[1]|0))*1000 || (t|0)*1000)(this.value)" type="text" style='width: 50px;position: absolute;left:10px;'>`
 ass.ondivresize=(r)=>{handle.canvas.width=r.w;handle.canvas.height=r.h;}
 ass.style.top='100px';
 let imgfile=async function(file) {
