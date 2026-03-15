@@ -103,9 +103,16 @@
             background-color: #f2dede;
             color: #a94442;
         }
-        .hex-mode {
-            display: inline-block;
-            margin-left: 10px;
+        .option-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .option-group label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
         }
     </style>
 </head>
@@ -129,14 +136,23 @@
             <input type="text" id="inputText" placeholder="输入要发送的数据...">
             <button id="sendTextBtn" class="send-btn">发送文本</button>
             <button id="sendHexBtn" class="send-btn">发送HEX</button>
-            <label class="hex-mode">
-                <input type="checkbox" id="hexMode"> HEX模式显示
-            </label>
         </div>
         
         <div class="config-section">
             <input type="text" id="customSendInput" placeholder="自定义发送内容">
             <button id="sendCustomBtn" class="send-btn">发送</button>
+        </div>
+        
+        <div class="config-section option-group">
+            <label>
+                <input type="checkbox" id="hexMode"> HEX模式显示
+            </label>
+            <label>
+                <input type="checkbox" id="addCrLf"> 行尾增加\r\n
+            </label>
+            <label>
+                <input type="checkbox" id="autoScroll"> 自动滚动
+            </label>
         </div>
         
         <div class="log-container">
@@ -171,6 +187,8 @@
         const logBox = document.getElementById('logBox');
         const statusBar = document.getElementById('statusBar');
         const hexMode = document.getElementById('hexMode');
+        const addCrLf = document.getElementById('addCrLf');
+        const autoScroll = document.getElementById('autoScroll');
         const customSendInput = document.getElementById('customSendInput');
         const sendCustomBtn = document.getElementById('sendCustomBtn');
 
@@ -178,7 +196,9 @@
         function log(message) {
             const timestamp = new Date().toLocaleTimeString();
             logBox.value += `[${timestamp}] ${message}\n`;
-            logBox.scrollTop = logBox.scrollHeight;
+            if (autoScroll.checked) {
+                logBox.scrollTop = logBox.scrollHeight;
+            }
         }
 
         // 更新状态栏
@@ -256,7 +276,9 @@
                         rxBox.value += text;
                     }
                     
-                    rxBox.scrollTop = rxBox.scrollHeight;
+                    if (autoScroll.checked) {
+                        rxBox.scrollTop = rxBox.scrollHeight;
+                    }
                 });
                 
                 // 获取写入特征值
@@ -292,10 +314,15 @@
                 return;
             }
             
-            const text = inputText.value;
+            let text = inputText.value;
             if (!text) {
                 log('请输入要发送的文本');
                 return;
+            }
+            
+            // 如果勾选了行尾增加\r\n，则在文本末尾添加
+            if (addCrLf.checked) {
+                text += '\r\n';
             }
             
             try {
@@ -316,10 +343,15 @@
                 return;
             }
             
-            const hexString = inputText.value.replace(/\s/g, '');
+            let hexString = inputText.value.replace(/\s/g, '');
             if (!hexString) {
                 log('请输入要发送的HEX数据');
                 return;
+            }
+            
+            // 如果勾选了行尾增加\r\n，则添加对应的HEX值(0D 0A)
+            if (addCrLf.checked) {
+                hexString += '0D0A'; // \r\n的HEX表示
             }
             
             try {
@@ -350,10 +382,15 @@
                 return;
             }
             
-            const content = customSendInput.value;
+            let content = customSendInput.value;
             if (!content) {
                 log('请输入要发送的内容');
                 return;
+            }
+            
+            // 如果勾选了行尾增加\r\n，则在内容末尾添加
+            if (addCrLf.checked) {
+                content += '\r\n';
             }
             
             try {
@@ -406,3 +443,6 @@
     </script>
 </body>
 </html>
+
+
+
