@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLE串口助手</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .control-panel {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .disconnect-btn {
+            background-color: #f44336;
+        }
+        .disconnect-btn:hover {
+            background-color: #d32f2f;
+        }
+        .send-btn {
+            background-color: #2196F3;
+        }
+        .send-btn:hover {
+            background-color: #0b7dda;
+        }
+        input[type="text"], select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        input[type="text"] {
+            flex-grow: 1;
+            min-width: 200px;
+        }
+        .config-section {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .log-container {
+            margin-top: 20px;
+        }
+        textarea {
+            width: 100%;
+            height: 300px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        .status-bar {
+            padding: 10px;
+            background-color: #e0e0e0;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        .status-connected {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        .status-disconnected {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+        .hex-mode {
+            display: inline-block;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>BLE串口助手</h1>
+        
+        <div class="status-bar status-disconnected" id="statusBar">未连接</div>
+        
+        <div class="control-panel">
+            <button id="connectBtn">连接BLE设备</button>
+            <button id="disconnectBtn" disabled class="disconnect-btn">断开连接</button>
+            <select id="deviceFilter">
+                <option value="0xFFF0">通用BLE UART</option>
+                <option value="custom">自定义服务</option>
+            </select>
+            <input type="text" id="customServiceId" placeholder="自定义服务UUID" style="display:none;">
+        </div>
+        
+        <div class="config-section">
+            <input type="text" id="inputText" placeholder="输入要发送的数据...">
+            <button id="sendTextBtn" class="send-btn">发送文本</button>
+            <button id="sendHexBtn" class="send-btn">发送HEX</button>
+            <label class="hex-mode">
+                <input type="checkbox" id="hexMode"> HEX模式显示
+            </label>
+        </div>
+        
+        <div class="config-section">
+            <input type="text" id="customSendInput" placeholder="自定义发送内容">
+            <button id="sendCustomBtn" class="send-btn">发送</button>
+        </div>
+        
+        <div class="log-container">
+            <h3>数据接收区</h3>
+            <textarea id="rxBox" readonly></textarea>
+        </div>
+        
+        <div class="log-container">
+            <h3>操作日志</h3>
+            <textarea id="logBox" readonly></textarea>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let myDevice = null;
+        let mainService = null;
+        let myCharacteristic = null;
+        let mySender = null;
+        let recvData = [];
+        let isConnected = false;
+        
+        // DOM元素
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const deviceFilter = document.getElementById('deviceFilter');
+        const customServiceId = document.getElementById('customServiceId');
+        const inputText = document.getElementById('inputText');
+        const sendTextBtn = document.getElementById('sendTextBtn');
+        const sendHexBtn = document.getElementById('sendHexBtn');
+        const rxBox = document.getElementById('rxBox');
+        const logBox = document.getElementById('logBox');
+        const statusBar = document.getElementById('statusBar');
+        const hexMode = document.getElementById('hexMode');
+        const customSendInput = document.getElementById('customSendInput');
+        const sendCustomBtn = document.getElementById('sendCustomBtn');
+
+        // 日志函数
+        function log(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            logBox.value += `[${timestamp}] ${message}\n`;
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        // 更新状态栏
+        function updateStatus(status) {
+            if (status) {
+                statusBar.textContent = `已连接 - 设备: ${myDevice.name || '未知'}`;
+                statusBar.className = 'status-bar status-connected';
+                isConnected = true;
+            } else {
+                statusBar.textContent = '未连接';
+                statusBar.className = 'status-bar status-disconnected';
+                isConnected = false;
+            }
+        }
+
+        // 连接按钮事件
+        connectBtn.addEventListener('click', async () => {
+            if (isConnected) return;
+            
+            let serviceId = parseInt(deviceFilter.value);
+            if (deviceFilter.value === 'custom') {
+                const customId = customServiceId.value.trim();
+                if (!customId) {
+                    log('请输入自定义服务UUID');
+                    return;
+                }
+                serviceId = customId.startsWith('0x') ? parseInt(customId) : customId;
+            }
+            
+            try {
+                log('正在搜索BLE设备...');
+                
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ services: [serviceId] }]
+                });
+                
+                log('连接设备中...');
+                myDevice = device;
+                
+                // 设备断开连接事件
+                device.addEventListener('gattserverdisconnected', () => {
+                    log('设备已断开连接');
+                    updateStatus(false);
+                    connectBtn.disabled = false;
+                    disconnectBtn.disabled = true;
+                });
+                
+                const server = await device.gatt.connect();
+                log('获取主服务...');
+                
+                mainService = await server.getPrimaryService(serviceId);
+                log('获取特征值...');
+                
+                // 获取读取特征值
+                myCharacteristic = await mainService.getCharacteristic(0xFFF1);
+                await myCharacteristic.startNotifications();
+                
+                myCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
+                    const value = event.target.value;
+                    const newData = new Uint8Array(value.buffer);
+                    
+                    recvData.push(...newData);
+                    
+                    // 显示数据
+                    if (hexMode.checked) {
+                        // HEX模式显示
+                        let hexStr = '';
+                        for (let i = 0; i < newData.length; i++) {
+                            hexStr += newData[i].toString(16).padStart(2, '0').toUpperCase() + ' ';
+                        }
+                        rxBox.value += hexStr;
+                    } else {
+                        // 文本模式显示
+                        const text = new TextDecoder().decode(value);
+                        rxBox.value += text;
+                    }
+                    
+                    rxBox.scrollTop = rxBox.scrollHeight;
+                });
+                
+                // 获取写入特征值
+                const sender = await mainService.getCharacteristic(0xFFF2);
+                mySender = sender;
+                
+                log(`成功连接到设备: ${device.name || '未知'}`);
+                updateStatus(true);
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+                
+            } catch (error) {
+                log(`连接失败: ${error.message}`);
+                console.error('BLE连接错误:', error);
+            }
+        });
+
+        // 断开连接按钮事件
+        disconnectBtn.addEventListener('click', () => {
+            if (myDevice && myDevice.gatt.connected) {
+                myDevice.gatt.disconnect();
+                log('已断开连接');
+            }
+            updateStatus(false);
+            connectBtn.disabled = false;
+            disconnectBtn.disabled = true;
+        });
+
+        // 发送文本按钮事件
+        sendTextBtn.addEventListener('click', async () => {
+            if (!isConnected || !mySender) {
+                log('请先连接设备');
+                return;
+            }
+            
+            const text = inputText.value;
+            if (!text) {
+                log('请输入要发送的文本');
+                return;
+            }
+            
+            try {
+                const encoder = new TextEncoder('utf-8');
+                const data = encoder.encode(text);
+                await mySender.writeValue(data);
+                log(`发送文本: ${text}`);
+                inputText.value = '';
+            } catch (error) {
+                log(`发送失败: ${error.message}`);
+            }
+        });
+
+        // 发送HEX按钮事件
+        sendHexBtn.addEventListener('click', async () => {
+            if (!isConnected || !mySender) {
+                log('请先连接设备');
+                return;
+            }
+            
+            const hexString = inputText.value.replace(/\s/g, '');
+            if (!hexString) {
+                log('请输入要发送的HEX数据');
+                return;
+            }
+            
+            try {
+                // 验证HEX字符串
+                if (!/^[0-9A-Fa-f]*$/.test(hexString)) {
+                    log('无效的HEX格式');
+                    return;
+                }
+                
+                // 将HEX字符串转换为字节数组
+                const bytes = [];
+                for (let i = 0; i < hexString.length; i += 2) {
+                    bytes.push(parseInt(hexString.substr(i, 2), 16));
+                }
+                
+                await mySender.writeValue(new Uint8Array(bytes));
+                log(`发送HEX: ${hexString.toUpperCase()}`);
+                inputText.value = '';
+            } catch (error) {
+                log(`发送失败: ${error.message}`);
+            }
+        });
+
+        // 发送自定义内容按钮事件
+        sendCustomBtn.addEventListener('click', async () => {
+            if (!isConnected || !mySender) {
+                log('请先连接设备');
+                return;
+            }
+            
+            const content = customSendInput.value;
+            if (!content) {
+                log('请输入要发送的内容');
+                return;
+            }
+            
+            try {
+                const encoder = new TextEncoder('utf-8');
+                const data = encoder.encode(content);
+                await mySender.writeValue(data);
+                log(`发送自定义内容: ${content}`);
+                customSendInput.value = '';
+            } catch (error) {
+                log(`发送失败: ${error.message}`);
+            }
+        });
+
+        // 设备过滤器变化事件
+        deviceFilter.addEventListener('change', () => {
+            if (deviceFilter.value === 'custom') {
+                customServiceId.style.display = 'inline-block';
+            } else {
+                customServiceId.style.display = 'none';
+            }
+        });
+
+        // 回车键发送功能
+        inputText.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                if (hexMode.checked) {
+                    sendHexBtn.click();
+                } else {
+                    sendTextBtn.click();
+                }
+            }
+        });
+
+        customSendInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendCustomBtn.click();
+            }
+        });
+
+        // 检查浏览器支持
+        if (!('bluetooth' in navigator)) {
+            log('浏览器不支持Web Bluetooth API，请使用Chrome浏览器');
+            connectBtn.disabled = true;
+        } else {
+            log('浏览器支持Web Bluetooth API');
+        }
+
+        // 初始化日志
+        log('BLE串口助手已启动，请连接设备开始通信');
+    </script>
+</body>
+</html>
